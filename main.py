@@ -178,6 +178,8 @@ class StartAgentHandler(tornado.web.RequestHandler):
 
 class PerformMoveHandler(tornado.web.RequestHandler):
 	def get(self):
+		global DIALOGUE_ID
+		global PARTICIPANT_ID
 		# get knowledge base
 		global KB_ALL
 		global KB_CHAIN
@@ -187,8 +189,23 @@ class PerformMoveHandler(tornado.web.RequestHandler):
 		# get last move type
 		lastMoveType = self.getLastMoveType()
 
+		# init move data variable
+		data = {}
+
 		if lastMoveType == "question":
-			pass
+			# fake data
+			p = "CP is wrong"
+
+			if p in KB_ALL :
+				data["reply"] = {
+					"p": p
+				}
+			elif "!"+p in KB_ALL :
+				data["reply"] = {
+					"p": !p
+				}
+			data["speaker"] = PARTICIPANT_ID
+			self.sendMove(data, "Statement")
 
 		if lastMoveType == "challenge":
 			pass
@@ -204,6 +221,14 @@ class PerformMoveHandler(tornado.web.RequestHandler):
 
 		if lastMoveType == "statement":
 			pass
+
+	def sendMove(self, data, interactionID):
+        import urllib2
+		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (%DIALOGUE_ID, interactionID)
+		encodedData = urllib.urlencode(data)
+		f = urllib2.urlopen(url, encodedData)
+		content = f.read()
+		print content
 
 	def getLastMoveType(self):
 		#get the type of last move from DGEP
