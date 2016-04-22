@@ -12,7 +12,10 @@ from tornado.options import define, options
 import pymongo
 import time
 import urllib
+import urllib2
 import json
+import random
+from threading import Timer
 
 define("port", default=8811, help="run on the given port", type=int)
 
@@ -33,7 +36,7 @@ KB_ALL = [
 	"CP would act as a deterrent to carrying weapons",
 	"!the state just one person or body of people i.e. a judge",
 	"the people are merely representatives of the state",
-	"killing of human life is wrong"",
+	"killing of human life is wrong",
 	"CP kills people",
 	"People can't decide who to kill",
 	"The state decide who to kill",
@@ -159,22 +162,327 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		pass
 
 	def post(self):
+
 		dialogueID = self.get_argument("dialogueID", 0)
 
 		if dialogueID :
 			global DIALOGUE_ID
 			global PARTICIPANT_ID
 			DIALOGUE_ID = dialogueID
-			PARTICIPANT_ID = self.getParticipantID(dialogueID)
+			PARTICIPANT_ID = self.getParticipantID()
 			print DIALOGUE_ID
 			print PARTICIPANT_ID
 
-	def getParticipantID(self, dialogueID):
-		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/join/%s/%s" % (dialogueID, "Resp", "ID")
+			while getGameStatus :
+				self.performMove()
+
+	def getParticipantID(self):
+		global DIALOGUE_ID
+		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/join/%s/%s" % (DIALOGUE_ID, "Resp", "ID")
 
 		result = json.loads(urllib.urlopen(MOVES_URL).read())
 		print result
 		return str(result["participantID"])
+
+	def performMove(self):
+		global DIALOGUE_ID
+		global PARTICIPANT_ID
+		# get knowledge base
+		global KB_ALL
+		global KB_CHAIN
+		global KB_SINGLE
+		# get available moves
+		moves =  self.getMoves()
+		# get last move type
+		lastMoveType = self.getLastMoveType()
+
+		# get FS
+		FS = self.getCSByKeyWord("FS")
+		# get CS Init
+		CSInit = self.getCSByKeyWord("Init")
+		# get CS Resp
+		CSResp = self.getCSByKeyWord("Resp")
+
+		# init move data variable
+		data = {}
+		data["speaker"] = PARTICIPANT_ID
+
+		if lastMoveType == "Question":
+			# fake data
+			p = "CP is wrong"
+			NOT_P = ""
+			if p[0] == "!":
+				NOT_P = p[1:-1]
+			else:
+				NOT_P = "!"+p
+
+			if p in KB_ALL :
+				data["reply"] = {
+					"p": p
+				}
+				self.sendMove(data, "Statement")
+			elif "!"+p in KB_ALL :
+				data["reply"] = {
+					"p": NOT_P
+				}
+				self.sendMove(data, "Statement")
+			else:
+				data["reply"] = {
+					"p": p
+				}
+				self.sendMove(data, "Withdraw")
+
+		if lastMoveType == "Challenge":
+			# fake data
+			p = "CP is wrong"
+			NOT_P = ""
+			if p[0] == "!":
+				NOT_P = p[1:-1]
+			else:
+				NOT_P = "!"+p
+
+			if p in CSResp or p in KB_ALL:
+				supports = [i for i in KB_CHAIN if p in i]
+				if not supports:
+					data["reply"] = {
+						"p": p
+					}
+					self.sendMove(data, "Withdraw")
+
+				if len(supports) == 1:
+					if supports[0].index(p) == len(supports[0]) - 1:
+						data["reply"] = {
+							"p": p
+						}
+						self.sendMove(data, "Withdraw")
+					else:
+						data["reply"] = {
+							"p": p,
+							"q": supports[0][supports[0].index(p)+1]
+						}
+						self.sendMove(data, "Defence")
+
+				if len(supports) > 1:
+					selectedSupport = []
+					supportsForSelectedSupportCountMax = 0
+					for support in supports:
+						# ">=" to make sure at least one support is sellected
+						if len(support) - 1 - support.index(p) >= supportsForSelectedSupportCountMax:
+							selectedSupport = support
+					if selectedSupport.index(p) == len(selectedSupport) - 1:
+						data["reply"] = {
+							"p": p
+						}
+						self.sendMove(data, "Withdraw")
+					else:
+						data["reply"] = {
+							"p": p,
+							"q": selectedSupport[selectedSupport.index(p)+1]
+						}
+						self.sendMove(data, "Defence")
+
+			elif NOT_P in KB_ALL:
+				data["reply"] = {
+					"p": NOT_P
+				}
+				self.sendMove(data, "Statement")
+			else:
+				data["reply"] = {
+					"p": p
+				}
+				self.sendMove(data, "Withdraw")
+
+		if lastMoveType == "Resolve":
+			# fake data
+			p = "CP is wrong"
+			NOT_P = ""
+			if p[0] == "!":
+				NOT_P = p[1:-1]
+			else:
+				NOT_P = "!"+p
+
+			# the agent is set to be the Resp player
+			if p in FS or NOT_P in FS:
+				data["reply"] = {
+					"p": FS[0]
+				}
+				self.sendMove(data, "Withdraw")
+			elif p not in KB_ALL and NOT_P not in KB_ALL:
+				if random.choice([True, False]):
+					data["reply"] = {
+						"p": p
+					}
+				else:
+					data["reply"] = {
+						"p": NOT_P
+					}
+				self.sendMove(data, "Withdraw")
+			elif p in KB_ALL:
+				data["reply"] = {
+					"p": NOT_P
+				}
+				self.sendMove(data, "Withdraw")
+			else:
+				# NOT_P in KB_ALL
+				data["reply"] = {
+					"p": p
+				}
+				self.sendMove(data, "Withdraw")
+
+		if lastMoveType == "StartOfGame":
+			pass
+
+		if lastMoveType == "Withdraw":
+			# fake data
+			p = "CP is wrong"
+			q = "!CP is wrong"
+			Resolution = [i for i in moves if i["MoveID"] == "Resolve"]
+			if Resolution:
+				data["reply"] = {
+					"p": p,
+					"q": q
+				}
+				self.sendMove(data, "Resolve")
+			else:
+				# select a random move
+				randomMove = random.choice(moves)
+				if randomMove["moveID"] == "Statement":
+					data["reply"] = {
+						"p": random.choice([i for i in KB_ALL if i not in CSResp])
+					}
+					self.sendMove(data, "Statement")
+				else:
+					data['reply'] = randomMove["reply"]
+					self.sendMove(data, randomMove["moveID"])
+
+
+		if lastMoveType == "Statement":
+			# fake data
+			p = "CP is wrong"
+			NOT_P = ""
+			if p[0] == "!":
+				NOT_P = p[1:-1]
+			else:
+				NOT_P = "!"+p
+			Resolution = [i for i in moves if i["MoveID"] == "Resolve"]
+			if Resolution:
+				data["reply"] = {
+					"p": p,
+					"q": q
+				}
+				self.sendMove(data, "Resolve")
+			elif NOT_P in KB_ALL:
+				data["reply"] = {
+					"p": NOT_P
+				}
+				self.sendMove(data, "Statement")
+			elif p not in KB_ALL:
+				data["reply"] = {
+					"p": p
+				}
+				self.sendMove(data, "Challenge")
+			else:
+				# select a random move
+				randomMove = random.choice(moves)
+				if randomMove["moveID"] == "Statement":
+					data["reply"] = {
+						"p": random.choice([i for i in KB_ALL if i not in CSResp])
+					}
+					self.sendMove(data, "Statement")
+				else:
+					data['reply'] = randomMove["reply"]
+					self.sendMove(data, randomMove["moveID"])
+
+	def sendMove(self, data, interactionID):
+		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (DIALOGUE_ID, interactionID)
+		encodedData = urllib.urlencode(data)
+		f = urllib2.urlopen(url, encodedData)
+		content = f.read()
+		print content
+
+	def getLastMoveType(self):
+		global DIALOGUE_ID
+		#get the type of last move from DGEP
+		HISTORY_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/history" % (dialogueID)
+
+		# result = json.loads(urllib.urlopen(HISTORY_URL).read())
+		result = {
+			"history": [
+				{
+					"player": 1378,
+					"move": "Question",
+					"reply": {
+						"p": "Britain should disarm",
+						"q": "foo"
+					}
+				}
+			]
+		}
+
+		history = result["history"]
+
+		if len(history) == 0:
+			return "StartOfGame"
+		else:
+			return history[-1]["move"]
+
+	def getCSByKeyWord(self, which):
+		global DIALOGUE_ID
+		#get commitment store content from DGEP
+		STORE_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/stores" % (dialogueID)
+
+		# result = json.loads(urllib.urlopen(STORE_URL).read())
+		result = {
+			"Stores": [
+				{
+					"Owner": "Init",
+					"Name": "FS",
+					"Contents": [
+						"Britain should disarm"
+					]
+				},
+				{
+					"Owner": "Init",
+					"Name": "CS",
+					"Contents": [
+						"Britain should disarm"
+					]
+				},
+				{
+					"Owner": "Resp",
+					"Name": "CS",
+					"Contents": [
+						"Britain should disarm"
+					]
+				}
+			]
+		}
+
+		# get the target CS
+		store = {}
+		if which == "FS":
+			store = [i for i in result["Stores"] if i["Name"] == "FS"][0]
+		elif which == "Init":
+			store = [i for i in result["Stores"] if i["Name"] == "CS" and i["Owner"] == "Init"][0]
+		elif which == "Resp":
+			store = [i for i in result["Stores"] if i["Name"] == "CS" and i["Owner"] == "Resp"][0]
+
+		return store["Contents"]
+
+	def getMoves(self):
+		global DIALOGUE_ID
+		global PARTICIPANT_ID
+		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/moves" % (DIALOGUE_ID)
+
+		result = json.loads(urllib.urlopen(MOVES_URL).read())
+		print PARTICIPANT_ID
+		print type(PARTICIPANT_ID)
+		# print result[PARTICIPANT_ID]
+		return result["26"]
+
+	def getGameStatus(self):
+
+		return True
 
 class PerformMoveHandler(tornado.web.RequestHandler):
 	def get(self):
@@ -202,7 +510,7 @@ class PerformMoveHandler(tornado.web.RequestHandler):
 				}
 			elif "!"+p in KB_ALL :
 				data["reply"] = {
-					"p": !p
+					"p": "!"+p
 				}
 			data["speaker"] = PARTICIPANT_ID
 			self.sendMove(data, "Statement")
@@ -223,8 +531,8 @@ class PerformMoveHandler(tornado.web.RequestHandler):
 			pass
 
 	def sendMove(self, data, interactionID):
-        import urllib2
-		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (%DIALOGUE_ID, interactionID)
+		import urllib2
+		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (DIALOGUE_ID, interactionID)
 		encodedData = urllib.urlencode(data)
 		f = urllib2.urlopen(url, encodedData)
 		content = f.read()
