@@ -382,6 +382,11 @@ class StartAgentHandler(tornado.web.RequestHandler):
 						"p": random.choice([i for i in KB_ALL if i not in CSResp])
 					}
 					self.sendMove(dialogueID, data, "Statement")
+				elif randomMove["moveID"] == "Question":
+					data["reply"] = {
+						"p": random.choice([i for i in KB_ALL if i not in CSResp])
+					}
+					self.sendMove(dialogueID, data, "Question")
 				else:
 					data['reply'] = randomMove["reply"]
 					self.sendMove(dialogueID, data, randomMove["moveID"])
@@ -420,6 +425,11 @@ class StartAgentHandler(tornado.web.RequestHandler):
 						"p": random.choice([i for i in KB_ALL if i not in CSResp])
 					}
 					self.sendMove(dialogueID, data, "Statement")
+				elif randomMove["moveID"] == "Question":
+					data["reply"] = {
+						"p": random.choice([i for i in KB_ALL if i not in CSResp])
+					}
+					self.sendMove(dialogueID, data, "Question")
 				else:
 					data['reply'] = randomMove["reply"]
 					self.sendMove(dialogueID, data, randomMove["moveID"])
