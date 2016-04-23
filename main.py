@@ -19,13 +19,9 @@ from threading import Timer
 
 define("port", default=8811, help="run on the given port", type=int)
 
-global DIALOGUE_ID
-global PARTICIPANT_ID
 global KB_ALL
 global KB_CHAIN
 global KB_SINGLE
-DIALOGUE_ID = 6
-PARTICIPANT_ID = 26
 KB_ALL = [
 	"!CP is wrong",
 	"There are too many repeat crimes after murderers are released",
@@ -44,70 +40,106 @@ KB_ALL = [
 ]
 KB_CHAIN = [
 	[
-		[
-			"!CP is wrong",
-			"There are too many repeat crimes after murderers are released",
-			"the sentences are not siff enough"
-		],
-		[
-			0,
-			0,
-			0
-		]
+		"!CP is wrong",
+		"There are too many repeat crimes after murderers are released",
+		"the sentences are not siff enough"
 	],
 	[
-		[
-			"!it against the law to kill a person",
-			"It is against the law for a citizen to kill another citizen and it is legal for the state to kill a citizen after the due process of law"
-		],
-		[
-			0,
-			0
-		]
+		"!it against the law to kill a person",
+		"It is against the law for a citizen to kill another citizen and it is legal for the state to kill a citizen after the due process of law"
 	],
 	[
-		[
-			"CP would decrease violent crime",
-			"CP would act as a deterrent to carrying weapons"
-		],
-		[
-			0,
-			0
-		]
+		"CP would decrease violent crime",
+		"CP would act as a deterrent to carrying weapons"
 	],
 	[
-		[
-			"!the state just one person or body of people i.e. a judge",
-			"the people are merely representatives of the state"
-		],
-		[
-			0,
-			0
-		]
+		"!the state just one person or body of people i.e. a judge",
+		"the people are merely representatives of the state"
 	]
 ]
 KB_SINGLE = [
 	[
-		"killing of human life is wrong",
-		0
+		"killing of human life is wrong"
 	],
 	[
-		"CP kills people",
-		0
+		"CP kills people"
 	],
 	[
-		"People can't decide who to kill",
-		0
+		"People can't decide who to kill"
 	],
 	[
-		"The state decide who to kill",
-		0
+		"The state decide who to kill"
 	],
 	[
-		"CP is acceptable",
-		0
+		"CP is acceptable"
 	]
 ]
+# KB_CHAIN_WITH_STATUS = [
+# 	[
+# 		[
+# 			"!CP is wrong",
+# 			"There are too many repeat crimes after murderers are released",
+# 			"the sentences are not siff enough"
+# 		],
+# 		[
+# 			0,
+# 			0,
+# 			0
+# 		]
+# 	],
+# 	[
+# 		[
+# 			"!it against the law to kill a person",
+# 			"It is against the law for a citizen to kill another citizen and it is legal for the state to kill a citizen after the due process of law"
+# 		],
+# 		[
+# 			0,
+# 			0
+# 		]
+# 	],
+# 	[
+# 		[
+# 			"CP would decrease violent crime",
+# 			"CP would act as a deterrent to carrying weapons"
+# 		],
+# 		[
+# 			0,
+# 			0
+# 		]
+# 	],
+# 	[
+# 		[
+# 			"!the state just one person or body of people i.e. a judge",
+# 			"the people are merely representatives of the state"
+# 		],
+# 		[
+# 			0,
+# 			0
+# 		]
+# 	]
+# ]
+# KB_SINGLE_WITH_STATUS = [
+# 	[
+# 		"killing of human life is wrong",
+# 		0
+# 	],
+# 	[
+# 		"CP kills people",
+# 		0
+# 	],
+# 	[
+# 		"People can't decide who to kill",
+# 		0
+# 	],
+# 	[
+# 		"The state decide who to kill",
+# 		0
+# 	],
+# 	[
+# 		"CP is acceptable",
+# 		0
+# 	]
+# ]
 
 # knowledgeBase = [
 # 	{
@@ -140,7 +172,7 @@ class Application(tornado.web.Application):
 			(r"/", MainHandler),
 			(r"/Test", TestHandler),
 			(r"/Resolve2", Resolution2Handler),
-			(r"/PerformMove", PerformMoveHandler),
+			(r"/Termination2", Termination2Handler),
 			(r"/StartAgent", StartAgentHandler),
 		]
 		settings = dict(
@@ -166,46 +198,45 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		dialogueID = self.get_argument("dialogueID", 0)
 
 		if dialogueID :
-			global DIALOGUE_ID
-			global PARTICIPANT_ID
-			DIALOGUE_ID = dialogueID
-			PARTICIPANT_ID = self.getParticipantID()
-			print DIALOGUE_ID
-			print PARTICIPANT_ID
+			dialogueID = dialogueID
+			participantID = self.getParticipantID(dialogueID)
 
-			while getGameStatus :
-				self.performMove()
+			Timer(0, self.newPerformMoveThread, [dialogueID, participantID]).start()
 
-	def getParticipantID(self):
-		global DIALOGUE_ID
-		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/join/%s/%s" % (DIALOGUE_ID, "Resp", "ID")
+	def newPerformMoveThread(self, dialogueID, participantID):
+		CHECKING_INTERVAL = 10
+		while self.getGameStatus(dialogueID) :
+			if self.getMoves(dialogueID, participantID):
+				self.performMove(dialogueID, participantID)
+			time.sleep(CHECKING_INTERVAL)
+
+	def getParticipantID(self, dialogueID):
+		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/join/%s/%s" % (dialogueID, "Resp", "ID")
 
 		result = json.loads(urllib.urlopen(MOVES_URL).read())
 		print result
 		return str(result["participantID"])
 
-	def performMove(self):
-		global DIALOGUE_ID
-		global PARTICIPANT_ID
+	def performMove(self, dialogueID, participantID):
 		# get knowledge base
 		global KB_ALL
 		global KB_CHAIN
 		global KB_SINGLE
 		# get available moves
-		moves =  self.getMoves()
+		moves =  self.getMoves(dialogueID, participantID)
 		# get last move type
-		lastMoveType = self.getLastMoveType()
+		lastMoveType = self.getLastMoveType(dialogueID)
 
 		# get FS
-		FS = self.getCSByKeyWord("FS")
+		FS = self.getCSByKeyWord(dialogueID, "FS")
 		# get CS Init
-		CSInit = self.getCSByKeyWord("Init")
+		CSInit = self.getCSByKeyWord(dialogueID, "Init")
 		# get CS Resp
-		CSResp = self.getCSByKeyWord("Resp")
+		CSResp = self.getCSByKeyWord(dialogueID, "Resp")
 
 		# init move data variable
 		data = {}
-		data["speaker"] = PARTICIPANT_ID
+		data["speaker"] = participantID
 
 		if lastMoveType == "Question":
 			# fake data
@@ -220,17 +251,17 @@ class StartAgentHandler(tornado.web.RequestHandler):
 				data["reply"] = {
 					"p": p
 				}
-				self.sendMove(data, "Statement")
+				self.sendMove(dialogueID, data, "Statement")
 			elif "!"+p in KB_ALL :
 				data["reply"] = {
 					"p": NOT_P
 				}
-				self.sendMove(data, "Statement")
+				self.sendMove(dialogueID, data, "Statement")
 			else:
 				data["reply"] = {
 					"p": p
 				}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 
 		if lastMoveType == "Challenge":
 			# fake data
@@ -247,20 +278,20 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					data["reply"] = {
 						"p": p
 					}
-					self.sendMove(data, "Withdraw")
+					self.sendMove(dialogueID, data, "Withdraw")
 
 				if len(supports) == 1:
 					if supports[0].index(p) == len(supports[0]) - 1:
 						data["reply"] = {
 							"p": p
 						}
-						self.sendMove(data, "Withdraw")
+						self.sendMove(dialogueID, data, "Withdraw")
 					else:
 						data["reply"] = {
 							"p": p,
 							"q": supports[0][supports[0].index(p)+1]
 						}
-						self.sendMove(data, "Defence")
+						self.sendMove(dialogueID, data, "Defence")
 
 				if len(supports) > 1:
 					selectedSupport = []
@@ -273,24 +304,24 @@ class StartAgentHandler(tornado.web.RequestHandler):
 						data["reply"] = {
 							"p": p
 						}
-						self.sendMove(data, "Withdraw")
+						self.sendMove(dialogueID, data, "Withdraw")
 					else:
 						data["reply"] = {
 							"p": p,
 							"q": selectedSupport[selectedSupport.index(p)+1]
 						}
-						self.sendMove(data, "Defence")
+						self.sendMove(dialogueID, data, "Defence")
 
 			elif NOT_P in KB_ALL:
 				data["reply"] = {
 					"p": NOT_P
 				}
-				self.sendMove(data, "Statement")
+				self.sendMove(dialogueID, data, "Statement")
 			else:
 				data["reply"] = {
 					"p": p
 				}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 
 		if lastMoveType == "Resolve":
 			# fake data
@@ -306,7 +337,7 @@ class StartAgentHandler(tornado.web.RequestHandler):
 				data["reply"] = {
 					"p": FS[0]
 				}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 			elif p not in KB_ALL and NOT_P not in KB_ALL:
 				if random.choice([True, False]):
 					data["reply"] = {
@@ -316,18 +347,18 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					data["reply"] = {
 						"p": NOT_P
 					}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 			elif p in KB_ALL:
 				data["reply"] = {
 					"p": NOT_P
 				}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 			else:
 				# NOT_P in KB_ALL
 				data["reply"] = {
 					"p": p
 				}
-				self.sendMove(data, "Withdraw")
+				self.sendMove(dialogueID, data, "Withdraw")
 
 		if lastMoveType == "StartOfGame":
 			pass
@@ -342,7 +373,7 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					"p": p,
 					"q": q
 				}
-				self.sendMove(data, "Resolve")
+				self.sendMove(dialogueID, data, "Resolve")
 			else:
 				# select a random move
 				randomMove = random.choice(moves)
@@ -350,10 +381,10 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					data["reply"] = {
 						"p": random.choice([i for i in KB_ALL if i not in CSResp])
 					}
-					self.sendMove(data, "Statement")
+					self.sendMove(dialogueID, data, "Statement")
 				else:
 					data['reply'] = randomMove["reply"]
-					self.sendMove(data, randomMove["moveID"])
+					self.sendMove(dialogueID, data, randomMove["moveID"])
 
 
 		if lastMoveType == "Statement":
@@ -370,17 +401,17 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					"p": p,
 					"q": q
 				}
-				self.sendMove(data, "Resolve")
+				self.sendMove(dialogueID, data, "Resolve")
 			elif NOT_P in KB_ALL:
 				data["reply"] = {
 					"p": NOT_P
 				}
-				self.sendMove(data, "Statement")
+				self.sendMove(dialogueID, data, "Statement")
 			elif p not in KB_ALL:
 				data["reply"] = {
 					"p": p
 				}
-				self.sendMove(data, "Challenge")
+				self.sendMove(dialogueID, data, "Challenge")
 			else:
 				# select a random move
 				randomMove = random.choice(moves)
@@ -388,20 +419,21 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					data["reply"] = {
 						"p": random.choice([i for i in KB_ALL if i not in CSResp])
 					}
-					self.sendMove(data, "Statement")
+					self.sendMove(dialogueID, data, "Statement")
 				else:
 					data['reply'] = randomMove["reply"]
-					self.sendMove(data, randomMove["moveID"])
+					self.sendMove(dialogueID, data, randomMove["moveID"])
 
-	def sendMove(self, data, interactionID):
-		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (DIALOGUE_ID, interactionID)
+	def sendMove(self, dialogueID, data, interactionID):
+		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (dialogueID, interactionID)
+		# url = "http://127.0.0.1:8811/StartAgent" for test
 		encodedData = urllib.urlencode(data)
-		f = urllib2.urlopen(url, encodedData)
-		content = f.read()
+		req = urllib2.Request(url, encodedData)
+		response = urllib2.urlopen(req)
+		content = response.read()
 		print content
 
-	def getLastMoveType(self):
-		global DIALOGUE_ID
+	def getLastMoveType(self, dialogueID):
 		#get the type of last move from DGEP
 		HISTORY_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/history" % (dialogueID)
 
@@ -426,8 +458,7 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		else:
 			return history[-1]["move"]
 
-	def getCSByKeyWord(self, which):
-		global DIALOGUE_ID
+	def getCSByKeyWord(self, dialogueID, which):
 		#get commitment store content from DGEP
 		STORE_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/stores" % (dialogueID)
 
@@ -469,176 +500,71 @@ class StartAgentHandler(tornado.web.RequestHandler):
 
 		return store["Contents"]
 
-	def getMoves(self):
-		global DIALOGUE_ID
-		global PARTICIPANT_ID
-		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/moves" % (DIALOGUE_ID)
+	def getMoves(self, dialogueID, participantID):
+		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/moves" % (dialogueID)
 
 		result = json.loads(urllib.urlopen(MOVES_URL).read())
-		print PARTICIPANT_ID
-		print type(PARTICIPANT_ID)
-		# print result[PARTICIPANT_ID]
+		print participantID
+		print type(participantID)
+		# print result[participantID]
+		# test data
 		return result["26"]
 
-	def getGameStatus(self):
+	def getGameStatus(self, dialogueID):
 
 		return True
 
-class PerformMoveHandler(tornado.web.RequestHandler):
-	def get(self):
-		global DIALOGUE_ID
-		global PARTICIPANT_ID
-		# get knowledge base
-		global KB_ALL
-		global KB_CHAIN
-		global KB_SINGLE
-		# get available moves
-		moves =  self.getMoves()
-		# get last move type
-		lastMoveType = self.getLastMoveType()
-
-		# init move data variable
-		data = {}
-
-		if lastMoveType == "question":
-			# fake data
-			p = "CP is wrong"
-
-			if p in KB_ALL :
-				data["reply"] = {
-					"p": p
-				}
-			elif "!"+p in KB_ALL :
-				data["reply"] = {
-					"p": "!"+p
-				}
-			data["speaker"] = PARTICIPANT_ID
-			self.sendMove(data, "Statement")
-
-		if lastMoveType == "challenge":
-			pass
-
-		if lastMoveType == "resolve":
-			pass
-
-		if lastMoveType == "start_of_game":
-			pass
-
-		if lastMoveType == "withdraw":
-			pass
-
-		if lastMoveType == "statement":
-			pass
-
-	def sendMove(self, data, interactionID):
-		import urllib2
-		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (DIALOGUE_ID, interactionID)
-		encodedData = urllib.urlencode(data)
-		f = urllib2.urlopen(url, encodedData)
-		content = f.read()
-		print content
-
-	def getLastMoveType(self):
-		#get the type of last move from DGEP
-		return "question"
-
-	def getMoves(self):
-		global DIALOGUE_ID
-		global PARTICIPANT_ID
-		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/moves" % (DIALOGUE_ID)
-
-		result = json.loads(urllib.urlopen(MOVES_URL).read())
-		print PARTICIPANT_ID
-		print type(PARTICIPANT_ID)
-		# print result[PARTICIPANT_ID]
-		return result["26"]
-
-
-
 class TestHandler(tornado.web.RequestHandler):
 	def get(self):
-		p = self.get_argument('p', None)
-
-		if not p:
-			return "Parameter Missing: p"
-		coll = self.application.db.record
-
-		if( not coll.find_one({"p": p}) ):
-			new_one = {"p": p, "time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()) ), "result": None}
-			coll.insert(new_one)
-		record = coll.find_one({"p": p})
-		while( record.result == None ):
-			time.sleep(5)
-			record = coll.find_one({"p": p})
-		# would dgep wait for the return?
-
-		return record.result
-
-class JudgeHandler(tornado.web.RequestHandler):
-	def get(self):
-		msg = self.get_argument("msg", "")
-
-		coll = self.application.db.record
-		pending_records = coll.find({"result": None})
-
-		self.render("judge.html",
-			pending_records = pending_records,
-			msg = msg,
-			)
-
-	def post(self):
-		result = self.get_argument('result', None)
-		p = self.get_argument('p', None)
-
-		if not p or not result:
-			return "Parameters Missing: p, result"
-
-		coll = self.application.db.record
-		record = coll.find_one({"p": p})
-		if( not record ):
-			return "Statement \""+p+"\" doesn't exist in the DB."
-		record.result = result
-		record.save()
-
-		self.redirect("/judge?msg=success")
-
-class PCSHandler(tornado.web.RequestHandler):
-	def get(self):
+		# p = self.get_argument('p', None)
+		#
+		# if not p:
+		# 	return "Parameter Missing: p"
+		# coll = self.application.db.record
+		#
+		# if( not coll.find_one({"p": p}) ):
+		# 	new_one = {"p": p, "time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()) ), "result": None}
+		# 	coll.insert(new_one)
+		# record = coll.find_one({"p": p})
+		# while( record.result == None ):
+		# 	time.sleep(5)
+		# 	record = coll.find_one({"p": p})
+		# # would dgep wait for the return?
+		#
+		# return record.result
 		pass
 
-	def post(self):
+def post(self):
+		# data for commitment store contents
+		# p for the statement that the player withdraws or challenges
 		data = self.get_argument("data", None)
+		p = self.get_argument("p", None)
 
 		if not data:
 			return "Parameter Missing: data"
 
 		# ss for simple_statements
 		# tfs for truth-functional statements
-		# PCS for potential commitment store
+		# IC for immediate consequences
 		ss = []
 		tfs = []
-		PCS = []
+		IC = []
 		for item in data:
 			if type(item) == types.StringType:
 				statements.append(item)
 			else:
 				logic_statements.append(item)
 
-		# >>> a = "aaa"
-		# >>> b = "bbb"
-		# >>> c = "{"aaa","bbb"}"
-		# >>> c[2:2+len(a)]
-		# 'aaa'
-		# >>> c[2:2+len(a)] == a
-		# True
-		# >>> c[2+len(a)+3:-2]
-		# 'bbb'
 		for s in ss:
 			l = len(s)
 			for tf in tfs:
 				if tf[2:2+l] == ss:
-					if tf[2+l+3:-2] not in ss:
-						PCS.append(tf[2+l+3:-2])
+					IC.append(tf[2+l+3:-2])
+
+		if p in IC:
+			self.write('{"result":"True"}')
+		else:
+			self.write('{"result":"False"}')
 
 class Resolution2Handler(tornado.web.RequestHandler):
 	def get(self):
@@ -682,133 +608,30 @@ class Resolution2Handler(tornado.web.RequestHandler):
 
 		if p in IC:
 			# return "resolve p and !p"
-			return True
+			# return True
+			LENGTH_OF_P = len(p)
+			relatedConditionals = [i for i in tfs if p == i[2+LENGTH_OF_P+3:-2]]
+			antecedent = relatedConditionals[0][2:2+LENGTH_OF_P]
+			consequent = relatedConditionals[0][2+LENGTH_OF_P+3:-2]
+			self.write('{"result":["'+antecedent+'","'+consequent+'"]}')
 		else:
 			# return "none"
-			return False
+			# return False
+			self.write('{"result":[]}')
 
-class InitKBHandler(tornado.web.RequestHandler):
+class Termination2Handler(tornado.web.RequestHandler):
 	def get(self):
-		import sae.const
-		import MySQLdb
-		import copy
+		pass
 
-		db=MySQLdb.connect(host=sae.const.MYSQL_HOST,port=int(sae.const.MYSQL_PORT ),user=sae.const.MYSQL_USER ,passwd=sae.const.MYSQL_PASS ,db=sae.const.MYSQL_DB)
-		cursor = db.cursor(cursorclass=MySQLdb.cursors.DictCursor)
-		sql = "SELECT * FROM knowledge_base WHERE premises != ''"
-		cursor.execute(sql)
+	def post(self):
+		CS = json.loads(self.get_argument("CS", ""))
+		FS_CS = json.loads(self.get_argument("FS_CS", ""))
 
-		result = cursor.fetchall()
-
-		init_chains = []
-		for row in result:
-			premises = row['premises'].strip().split(',')
-			for premise in premises:
-				init_chains.append([int(premise),row['id']])
-
-		statement_chains = []
-		statement_chains = InitKBHandler.getCleanedList(self, InitKBHandler.solve(self, init_chains, init_chains))
-
-		# now we've got statement_chains: [[7,6,1],[2,1], [2,5,4,3]]
-
-		sql = "SELECT * FROM knowledge_base WHERE premises = '' "
-		cursor.execute(sql)
-
-		isolated_statements = []
-		result = cursor.fetchall()
-
-		for row in result:
-			count = 0
-			for init_chain in init_chains:
-				if row['id'] in init_chain:
-					count += 1
-			if count is 0:
-				isolated_statements.append(row['id'])
-
-		# now we've got isolated_statements: [8,9]
-
-		statement_chains_with_status = []
-		isolated_statements_with_status = []
-
-		for statement_chain in statement_chains:
-			statement_chains_with_status.append([statement_chain, ([0])*len(statement_chain)])
-		# now we've got statement_chains_with_status: [[[7,6,1],[0,0,0]],[[2,1],[0,0]], [[2,5,4,3],[0,0,0,0]]]
-
-
-		isolated_statements_with_status = [isolated_statements, ([0])*len(isolated_statements)]
-
-		#self.write("%s\n%s"%statement_chains_with_status,isolated_statements_with_status)
-		for row in statement_chains_with_status:
-			self.write("%s\n"%row)
-		self.write("%s\n"%isolated_statements_with_status)
-		#for row in isolated_statements:
-		#   self.write("%s\n"%row)
-		# now we've got isolated_statements_with_status: [[8,9],[0,0]]
-
-	@staticmethod
-	def getAllDistinctConsequence(self, List):
-		result = []
-		for item in List:
-			if item[-1] not in result:
-				result.append(item[-1])
-		return result
-
-	@staticmethod
-	def getAllListEndWithThisConsequence(self, List, Consequence):
-		result = []
-		for item in List:
-			if item[-1] is Consequence:
-				result.append(item)
-		return result
-
-	@staticmethod
-	def getCleanedList(self, List):
-		import copy
-		List_copy = copy.deepcopy(List)
-		for one in List_copy:
-			for two in List_copy:
-				if one != two and one == two[len(two)-len(one):]:
-					if one in List:
-						List.remove(one)
-		return List
-
-	@staticmethod
-	def solve(self, init_chains, chains_to_deal_with):
-		print "to_deal:",init_chains
-		import copy
-		current_chains = []
-		chains_to_remove = []
-
-		no_more_new_chain = True
-		distinct_consequences = InitKBHandler.getAllDistinctConsequence(self, chains_to_deal_with)
-		for distinct_consequence in distinct_consequences:
-			Lists = InitKBHandler.getAllListEndWithThisConsequence(self, chains_to_deal_with, distinct_consequence)
-			for List in Lists:
-				#prohibit cycle
-				if List[0] == List[-1]:
-					continue
-				not_connected_with_others = True
-				for init_chain in init_chains:
-					if init_chain[0] == distinct_consequence:
-						not_connected_with_others = False
-						no_more_new_chain = False
-						List_copy = copy.deepcopy(List)
-						List_copy.extend(init_chain[1:])
-						current_chains.append(List_copy)
-						chains_to_remove.append(List)
-						chains_to_remove.append(init_chain)
-				if not_connected_with_others:
-					current_chains.append(List)
-		print "to_remove",chains_to_remove
-		print "current",current_chains
-		for chain in chains_to_remove:
-			if chain in current_chains:
-				current_chains.remove(chain)
-		print "cleaned_current",current_chains
-		if no_more_new_chain:
-			return current_chains
+		if FS_CS["Contents"][0] in CS["Contents"]:
+			self.write('{"result":"True"}')
 		else:
-			return InitKBHandler.solve(self, init_chains, current_chains)
+			self.write('{"result":"False"}')
+
 
 def main():
 	tornado.options.parse_command_line()
