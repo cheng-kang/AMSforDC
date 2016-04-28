@@ -194,23 +194,28 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		pass
 
 	def post(self):
-
 		dialogueID = self.get_argument("dialogueID", 0)
 
 		if dialogueID :
 			dialogueID = dialogueID
+			print "DialogueID:"+dialogueID
 			participantID = self.getParticipantID(dialogueID)
 
 			Timer(0, self.newPerformMoveThread, [dialogueID, participantID]).start()
 
 	def newPerformMoveThread(self, dialogueID, participantID):
 		CHECKING_INTERVAL = 10
+		print "\nNew PerformMove Thread Created."
 		while self.getGameStatus(dialogueID) :
+			print "\nGame status: game is on."
 			if self.getMoves(dialogueID, participantID):
+				print "\nLegal moves exist."
 				self.performMove(dialogueID, participantID)
+			print "\nSleep for 10s."
 			time.sleep(CHECKING_INTERVAL)
 
 	def getParticipantID(self, dialogueID):
+		print "\nGet participantID from DGEP.\nThe result:\n"
 		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/join/%s/%s" % (dialogueID, "Resp", "ID")
 
 		result = json.loads(urllib.urlopen(MOVES_URL).read())
@@ -226,6 +231,8 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		moves =  self.getMoves(dialogueID, participantID)
 		# get last move type
 		lastMoveType = self.getLastMoveType(dialogueID)
+
+		print "Performing move."
 
 		# get FS
 		FS = self.getCSByKeyWord(dialogueID, "FS")
@@ -435,15 +442,20 @@ class StartAgentHandler(tornado.web.RequestHandler):
 					self.sendMove(dialogueID, data, randomMove["moveID"])
 
 	def sendMove(self, dialogueID, data, interactionID):
-		url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (dialogueID, interactionID)
-		# url = "http://127.0.0.1:8811/StartAgent" for test
-		encodedData = urllib.urlencode(data)
-		req = urllib2.Request(url, encodedData)
-		response = urllib2.urlopen(req)
-		content = response.read()
-		print content
+		print "\nMove Data:"
+		print data
+		print "\nInteractionID: "+interactionID
+		# url = "http://arg.dundee.ac.uk:8080/dialogue/%s/interaction/%s" % (dialogueID, interactionID)
+		# # url = "http://127.0.0.1:8811/StartAgent" for test
+		# encodedData = urllib.urlencode(data)
+		# req = urllib2.Request(url, encodedData)
+		# response = urllib2.urlopen(req)
+		# content = response.read()
+		# print content
+		pass
 
 	def getLastMoveType(self, dialogueID):
+		print "Get the type of the last move from DGEP."
 		#get the type of last move from DGEP
 		HISTORY_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/history" % (dialogueID)
 
@@ -466,6 +478,7 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		if len(history) == 0:
 			return "StartOfGame"
 		else:
+			print "\nThe move type is: "+history[-1]["move"]
 			return history[-1]["move"]
 
 	def getCSByKeyWord(self, dialogueID, which):
@@ -511,17 +524,18 @@ class StartAgentHandler(tornado.web.RequestHandler):
 		return store["Contents"]
 
 	def getMoves(self, dialogueID, participantID):
+		print "\nGet legal moves."
 		MOVES_URL = "http://www.arg.dundee.ac.uk:8080/dialogue/%s/moves" % (dialogueID)
 
 		result = json.loads(urllib.urlopen(MOVES_URL).read())
-		print participantID
-		print type(participantID)
+		print "\nAvailable moves:\n"
+		print result
 		# print result[participantID]
 		# test data
 		return result["26"]
 
 	def getGameStatus(self, dialogueID):
-
+		print "\nCheck game status."
 		return True
 
 class TestHandler(tornado.web.RequestHandler):
